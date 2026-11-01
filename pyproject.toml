@@ -36,4 +36,4 @@ dev = [
 ]
 
 [tool.uv.sources]
-lightsmith = { path = "../PlasmonHub", editable = true }
+lightsmith = { path = "../lightsmith", editable = true }
