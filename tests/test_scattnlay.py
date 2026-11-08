@@ -118,6 +118,18 @@ def test_n_max_rule_matches_scattnlay():
         assert scattnlay_n_max(x, m, None if pl < 0 else pl) == terms, (x, m, pl)
 
 
+def test_pec_layer_is_a_perfect_conductor():
+    # A small perfectly conducting sphere: Q_sca = (10/3) x^4 in the Rayleigh limit, and it absorbs nothing.
+    r, lam = 10.0, 2000.0
+    sim = ls.Simulation(particles=[ls.Particle(shape=ls.Sphere(radius_nm=r), material=ls.ConstantIndex(n_real=1.5))],
+                        wavelengths=[lam], options={"scattnlay": {"pec_layer": 0}})
+    res = ls.solve(sim, method="scattnlay")
+    x = 2 * np.pi * r / lam
+    assert res.c_sca_nm2[0] / (np.pi * r**2) == pytest.approx(10 / 3 * x**4, rel=1e-2)
+    assert abs(res.c_abs_nm2[0]) < 1e-10 * res.c_sca_nm2[0] / x**4
+    assert ls.discretization(sim, "scattnlay")["payload"]["n_max"] == res.provenance["terms"]
+
+
 def test_options_are_validated():
     with pytest.raises(Exception):
         ls.solve(sphere_sim(AU, options={"scattnlay": {"bogus": 1}}), method="scattnlay")
