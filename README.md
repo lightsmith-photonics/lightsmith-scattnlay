@@ -11,7 +11,7 @@ the combination does bring in GPL obligations.
 ## Install
 
 ```console
-uv pip install git+https://github.com/lightsmith-photonics/lightsmith-scattnlay   # pulls scattnlay 2.4 from PyPI
+uv pip install --no-sources git+https://github.com/lightsmith-photonics/lightsmith-scattnlay   # pulls scattnlay 2.4 from PyPI
 lightsmith backends                             # lists "scattnlay" (method "mie")
 ```
 
