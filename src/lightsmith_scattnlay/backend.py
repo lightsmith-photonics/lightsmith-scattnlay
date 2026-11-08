@@ -12,6 +12,7 @@ lightsmith and indices are passed unconjugated.
 
 from __future__ import annotations
 
+import math
 import time
 from importlib.metadata import PackageNotFoundError, version
 
@@ -48,6 +49,36 @@ def _has_mp() -> bool:
 
 
 _SHARED = {"n_max"}  # keys of the method-level options["mie"] that scattnlay honours
+NMAX_RULE = "scattnlay's calcNmax (Wiscombe, Le Ru near-field cutoff, |m x| per layer, + 15)"
+
+
+def _round(v: float) -> int:
+    """scattnlay's newround / std::round: half away from zero."""
+    return int(math.floor(abs(v) + 0.5)) * (1 if v >= 0 else -1)
+
+
+def scattnlay_n_max(x, m, pec_layer: int | None = None) -> int:
+    """The number of multipole terms scattnlay 2.4 uses when ``nmax`` is not given, for one wavelength:
+    ``MultiLayerMie::calcNmax`` (src/nmie-basic.hpp) for size parameters ``x`` and relative indices ``m``,
+    core first. Double-precision builds only (the multiprecision build adds more terms). scattnlay shortens the
+    series at run time if a term overflows (very large, very lossy layers); the solve's ``terms`` then report it."""
+    x = [float(v) for v in x]
+    m = [complex(v) for v in m]
+    pl = -1 if pec_layer is None else int(pec_layer)
+    xl = x[-1]
+    if xl <= 8:
+        nmax = _round(xl + 4.0 * xl ** (1 / 3) + 1)
+    elif xl <= 4200:
+        nmax = _round(xl + 4.05 * xl ** (1 / 3) + 2)
+    else:
+        nmax = _round(xl + 4.0 * xl ** (1 / 3) + 2)
+    nmax = max(nmax, _round(xl + 11 * xl ** (1 / 3) + 1) + 1)  # LeRu_near_field_cutoff(xL) + 1
+    first = pl if pl > 0 else 0
+    for i in range(first, len(x)):
+        nmax = max(nmax, _round(abs(x[i] * m[i])) if i > pl else 0)
+        if i > first and i - 1 > pl:
+            nmax = max(nmax, _round(abs(x[i - 1] * m[i])))
+    return nmax + 15
 
 
 class ScattnlayBackend(Backend):
@@ -79,6 +110,30 @@ class ScattnlayBackend(Backend):
     @classmethod
     def estimate(cls, sim, device):
         return {"cost": "negligible", "memory_bytes": 0}
+
+    @classmethod
+    def discretization(cls, sim: Simulation, device: Device) -> dict:
+        """The multipole order scattnlay will use per wavelength (``lightsmith.discretization``): its own rule
+        (:func:`scattnlay_n_max`), or the ``n_max`` option. Never solves."""
+        opts, warnings = cls.options(sim)
+        wl = sim.wavelength_array()
+        x, m = cls.layers(sim, wl)
+        if opts.n_max:
+            per = [int(opts.n_max)] * len(wl)
+        else:
+            per = [scattnlay_n_max(x[j], m[j], opts.pec_layer) for j in range(len(wl))]
+            if opts.multiprecision and _has_mp():
+                warnings.append("the multiprecision build adds terms beyond this double-precision count")
+        xs = np.round(x[:, -1], 5).tolist()
+        payload = {"wavelengths_nm": np.round(wl, 4).tolist(), "n_max": per, "size_parameter": xs,
+                   "fixed_n_max": opts.n_max, "rule": NMAX_RULE if not opts.n_max else "n_max option",
+                   "layers": int(x.shape[1]), "pec_layer": opts.pec_layer}
+        summary = {"multipole order n_max": f"{min(per)}–{max(per)}" if min(per) != max(per) else max(per),
+                   "rule": payload["rule"], "layers": int(x.shape[1]), "largest size parameter": round(max(xs), 4)}
+        if opts.n_max:
+            summary["n_max (option)"] = opts.n_max
+        return {"layout_kind": "multipoles", "summary": summary, "payload": payload, "warnings": warnings,
+                "error": None}
 
     @classmethod
     def options(cls, sim: Simulation) -> tuple[ScattnlayOptions, list[str]]:

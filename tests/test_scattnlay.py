@@ -87,6 +87,37 @@ def test_far_field_integrates_to_csca():
     assert d[0, 0] == pytest.approx(d[0, 36], rel=1e-12)
 
 
+def test_discretization_reports_the_terms_scattnlay_uses():
+    for sim in (sphere_sim(AU), sphere_sim(DIELECTRIC, radius=900.0),
+                layered_sim(ls.ConstantIndex(n_real=4.0, n_imag=0.1), [(10.0, AU), (25.0, DIELECTRIC)])):
+        d = ls.discretization(sim, "scattnlay")
+        assert d["backend"] == "scattnlay" and d["layout_kind"] == "multipoles" and d["error"] is None
+        p = d["payload"]
+        assert p["n_max"] == ls.solve(sim, method="scattnlay").provenance["terms"]
+        assert p["layers"] == len(sim.particles[0].region_materials()) == d["summary"]["layers"]
+        assert p["rule"].startswith("scattnlay") and len(p["wavelengths_nm"]) == len(p["size_parameter"]) == 41
+    fixed = sphere_sim(AU, options={"mie": {"n_max": 30}})
+    d = ls.discretization(fixed, "scattnlay")
+    assert d["payload"]["n_max"] == [30] * 41 == ls.solve(fixed, method="scattnlay").provenance["terms"]
+    assert d["summary"]["n_max (option)"] == 30
+
+
+def test_n_max_rule_matches_scattnlay():
+    from scattnlay import scattnlay
+
+    from lightsmith_scattnlay.backend import scattnlay_n_max
+
+    # Sizes and indices where scattnlay's series stays finite (it shortens the series at run time otherwise).
+    rng = np.random.default_rng(1)
+    for _ in range(300):
+        layers = int(rng.integers(1, 5))
+        x = np.sort(rng.uniform(0.01, 1.0, layers)) * 10 ** rng.uniform(-1.5, 1.7)
+        m = rng.uniform(1.0, 5.0, layers) + 1j * rng.uniform(0.0, 1.0, layers)
+        pl = int(rng.integers(-1, layers)) if rng.random() < 0.3 else -1
+        terms = int(scattnlay(x, m, pl=pl)[0])
+        assert scattnlay_n_max(x, m, None if pl < 0 else pl) == terms, (x, m, pl)
+
+
 def test_options_are_validated():
     with pytest.raises(Exception):
         ls.solve(sphere_sim(AU, options={"scattnlay": {"bogus": 1}}), method="scattnlay")

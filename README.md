@@ -1,6 +1,6 @@
 # lightsmith-scattnlay
 
-An [lightsmith](../../README.md) backend for [scattnlay](https://github.com/ovidiopr/scattnlay), the
+A [lightsmith](https://github.com/lightsmith-photonics/lightsmith) backend for [scattnlay](https://github.com/ovidiopr/scattnlay), the
 multilayer-sphere Mie code by Peña, Pal, Ladutenko and co-workers.
 
 **License: GPL-3.0-or-later.** scattnlay is GPL-3 (or later), and this plugin imports it, so the plugin is
@@ -11,7 +11,7 @@ the combination does bring in GPL obligations.
 ## Install
 
 ```console
-uv pip install ./plugins/lightsmith-scattnlay   # pulls scattnlay 2.4 from PyPI
+uv pip install git+https://github.com/lightsmith-photonics/lightsmith-scattnlay   # pulls scattnlay 2.4 from PyPI
 lightsmith backends                             # lists "scattnlay" (method "mie")
 ```
 
@@ -28,6 +28,8 @@ it from the sdist, which needs a C++ compiler.
 - Sign convention: scattnlay uses exp(-iωt), so it absorbs for Im(m) > 0, the same as lightsmith. With
   scattnlay 2.4, m = 1.5 + 0.1i gives Q_abs > 0 and m = 1.5 − 0.1i gives Q_abs < 0. Indices are passed
   unconjugated.
+- `ls.discretization(sim, method="scattnlay")` reports the multipole order scattnlay will use at each
+  wavelength (its own rule, or `n_max`), without solving.
 
 Options (`Simulation.options["scattnlay"]`, strict):
 
@@ -40,7 +42,7 @@ From the method-level `options["mie"]`, `n_max` is honoured and other keys are i
 ## Develop
 
 ```console
-cd plugins/lightsmith-scattnlay
+cd lightsmith-scattnlay       # next to a lightsmith checkout in ../lightsmith (tool.uv.sources)
 uv sync
 uv run pytest
 uv run lightsmith backends
@@ -48,7 +50,8 @@ uv run lightsmith backends
 
 The tests compare against `miepython` for plain spheres (agreement to about 1e-11 relative). They also check
 that a layered sphere whose layers share one material reduces to Mie, and that the layer order is core
-first. Finally, they check that the far field integrates to C_sca.
+first. Finally, they check that the far field integrates to C_sca, and that `discretization()` reports the
+number of terms scattnlay actually uses.
 
 ## Cite
 
